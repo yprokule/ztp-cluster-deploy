@@ -7,6 +7,9 @@
     - role: prepare-environment
       tags: prepare-environment
       become: yes
+    - role: install-assisted-installer
+      tags: install-assisted-installer
+      become: yes
     - role: create-cluster
       tags: create-cluster
       become: yes

@@ -1,0 +1,56 @@
+- name: Create temporary directory
+  tempfile:
+    state: directory
+  register: temporary_directory
+
+- name: Copy pull secret
+  ansible.builtin.copy:
+    content: "{{ pull_secret }}"
+    dest: "{{ temporary_directory.path }}/pull_secret"
+
+- name: Login to private registry
+  shell: "podman login --username dummy --password dummy"
+
+- name: Login to red hat registry
+  shell: "podman login registry.redhat.io --username {{ redhat_subscription_user }} --password {{ redhat_subscription_password }}"
+
+- name: Set private registry var
+  set_fact:
+    provisioner_cluster_registry_var: "{% if provisioner_cluster_registry is defined and provisioner_cluster_registry|length > 0 %}{{ provisioner_cluster_registry }}{% else %}{{ provisioner_cluster_name }}-disconnecter.{{ provisioner_cluster_name }}.{{ provisioner_cluster_domain }}:5000{% endif %}"
+
+- name: Copy template to temporary path
+  template:
+    src: templates/icsp.yaml.j2
+    dest: "{{ temporary_directory.path }}/icsp.yaml"
+
+- name: Mirror images to internal registry
+  include: mirror_image.yml image={{ item }} provisioner_cluster_registry_var={{ provisioner_cluster_registry_var }}
+  with_items:
+    - quay.io/ocpmetal/s3server
+    - quay.io/jparrill/s3server
+    - quay.io/ocpmetal/assisted-service
+    - quay.io/ocpmetal/assisted-installer
+    - quay.io/ocpmetal/assisted-installer-agent
+    - quay.io/ocpmetal/ocp-metal-ui
+    - quay.io/ocpmetal/bm-inventory
+    - quay.io/ocpmetal/assisted-installer-controller
+    - quay.io/ocpmetal/assisted-iso-create
+    - quay.io/ocpmetal/ocp-metal-ui-tests
+    - quay.io/ocpmetal/postgresql-12-centos7
+    - quay.io/ocpmetal/s3-object-expirer
+    - quay.io/ocpmetal/assisted-installer-controller-ocp
+    - quay.io/ocpmetal/swagger-codegen-cli:2.4.15
+    - quay.io/ocpmetal/agent
+    - quay.io/ocpmetal/assisted-ignition-generator:stable.24.09.2020-22.20
+    - quay.io/ocpmetal/connectivity_check
+    - quay.io/ocpmetal/inventory
+    - quay.io/sameersbn/squid
+    - quay.io/coreos/coreos-installer:release
+    - quay.io/ohadlevy/kexec
+    - quay.io/bitnami/wildfly
+    - quay.io/ocpmetal/assisted-installer-controller-ocp:latest
+    - quay.io/mavazque/s3cmd
+    - quay.io/jparrill/assisted-service-operator-bundle:0.0.1
+    - quay.io/jparrill/assisted-service-index:0.0.1
+    - quay.io/openshift/origin-cli:latest
+    - registry.access.redhat.com/ubi8/ubi-minimal:latest

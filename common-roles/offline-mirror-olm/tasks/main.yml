@@ -1,0 +1,63 @@
+- name: Copy local kubeconfig to remote server if set
+  block:
+    - ansible.builtin.copy:
+        src: "{{ provisioner_cluster_kubeconfig }}"
+        dest: "{{ temporary_path }}/kubeconfig"
+    - set_fact:
+        kubeconfig_path: "{{ temporary_path }}/kubeconfig"
+  when: provisioner_cluster_kubeconfig is defined and provisioner_cluster_kubeconfig|length > 0
+
+- name: If not set, assume the defaults with kcli
+  set_fact:
+    kubeconfig_path: "/root/.kcli/clusters/{{ provisioner_cluster_name }}/auth/kubeconfig"
+  when: provisioner_cluster_kubeconfig is not defined
+
+- name: Create temporary directory
+  tempfile:
+    state: directory
+  register: temporary_directory
+
+- name: Copy pull secret
+  ansible.builtin.copy:
+    content: "{{ pull_secret }}"
+    dest: "{{ temporary_directory.path }}/pull_secret"
+
+- name: Download oc binary
+  ansible.builtin.unarchive:
+    src: "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/{{ provisioner_cluster_version }}/{{ item }}"
+    dest: "{{ temporary_directory.path }}"
+    remote_src: yes
+  with_items:
+    - openshift-client-linux.tar.gz
+    - opm-linux.tar.gz
+
+- name: Copy template to temporary path
+  template:
+    src: templates/offline-operator-mirror.sh.j2
+    dest: "{{ temporary_directory.path }}/offline-operator-mirror.sh"
+    mode: 0755
+  vars:
+    pull_secret_path: "{{ temporary_directory.path }}/pull_secret"
+    binary_path: "{{ temporary_directory.path }}"
+    provisioner_cluster_registry_var: "{% if provisioner_cluster_registry is defined and provisioner_cluster_registry|length > 0 %}{{ provisioner_cluster_registry }}{% else %}{{ provisioner_cluster_name }}-disconnecter.{{ provisioner_cluster_name }}.{{ provisioner_cluster_domain }}:5000{% endif %}"
+    provisioner_cluster_registry_user: dummy
+    provisioner_cluster_registry_password: dummy
+
+- name: Disable outside operators
+  shell: ./oc patch OperatorHub cluster --type json -p '[{"op":"add", "path":"/spec/disableAllDefaultSources", "value":true}]'
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  args:
+    chdir: "{{ temporary_directory.path }}"
+
+- name: Sync OLM operators
+  ansible.builtin.shell:
+    cmd: ./offline-operator-mirror.sh {{ item }}
+    chdir: "{{ temporary_directory.path }}"
+    executable: /bin/bash
+  with_items:
+    - mirror
+    - mirror-olm
+    - sync
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"

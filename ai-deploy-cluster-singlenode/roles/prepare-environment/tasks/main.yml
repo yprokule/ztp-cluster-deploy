@@ -2,34 +2,19 @@
 - name: Install needed packages
   yum:
     name:
-      - podman
+      - python3-pip
       - openssl-devel
       - make
+      - podman
+      - skopeo
+      - jq
+      - git
     state: present
 
 - name: install httpd
   include_role:
     name: "{{ playbook_dir }}/../common-roles/install-httpd"
   when: virtualmedia_over_http is defined and virtualmedia_over_http|bool == True
-
-- name: Set openshift_versions json dict
-  ansible.builtin.set_fact:
-    openshift_versions_dict: '{"{{ cluster_version }}":{
-      "release_image": "{{ sno_image }}",
-      "display_name": "{{ display_name }}",
-      "rhcos_image": "{{ rhcos_image }}",
-      "rhcos_version": "{{ rhcos_version }}",
-      "support_level": "{{ support_level | default("beta") }}"
-}
-}'
-
-- name: Set openshift_versions json object
-  ansible.builtin.set_fact:
-    openshift_versions: "{{ openshift_versions_dict | to_json }}"
-
-- name: Set rhcos_base_iso to rhcos_image to avoid duplication
-  ansible.builtin.set_fact:
-    rhcos_base_iso: "{{ rhcos_image }}"
 
 - name: install racadm
   include_role:
@@ -40,15 +25,7 @@
   include_role:
     name: "{{ playbook_dir }}/../common-roles/install-aicli"
 
-- name: install assisted installer
+- name: Install provisioner cluster
   include_role:
-    name: "{{ playbook_dir }}/../common-roles/install-assisted-installer"
-  vars:
-    onprem_vars:
-      - - "SUPPORT_L2=false"
-        - "SERVICE_BASE_URL={{ ai_url }}"
-        - "HW_VALIDATOR_MIN_DISK_SIZE_GIB=50"
-        - "OPENSHIFT_VERSIONS={{ openshift_versions }}"
-        - "OPENSHIFT_INSTALL_RELEASE_IMAGE={{ sno_image }}"
-        - "PUBLIC_CONTAINER_REGISTRIES=quay.io,registry.svc.ci.openshift.org"
-        - "RHCOS_BASE_ISO={{ rhcos_base_iso }}"
+    name: "{{ playbook_dir }}/../common-roles/create-provisioner-cluster"
+  when: provisioner_cluster_name is defined and provisioner_cluster_name|length > 0 
